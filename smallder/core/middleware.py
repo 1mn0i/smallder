@@ -38,19 +38,21 @@ class MiddlewareManager:
             return None
 
     def process_request(self, request):
-
         for mw_instance, _ in sorted(self.loaded_middlewares, key=lambda x: x[1]):
             try:
-                request = mw_instance.process_request(request)
-            except AttributeError as e:
-                logger.exception(e)
+                result = mw_instance.process_request(request)
+                if result is not None:
+                    request = result
+            except Exception as e:
+                logger.exception(f"Error in middleware {mw_instance.__class__.__name__}.process_request: {e}")
         return request
 
     def process_response(self, response):
-
         for mw_instance, _ in sorted(self.loaded_middlewares, key=lambda x: x[1]):
             try:
-                response = mw_instance.process_response(response)
-            except AttributeError as e:
-                logger.exception(e)
+                result = mw_instance.process_response(response)
+                if result is not None:
+                    response = result
+            except Exception as e:
+                logger.exception(f"Error in middleware {mw_instance.__class__.__name__}.process_response: {e}")
         return response

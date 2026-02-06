@@ -15,7 +15,9 @@ class Filter:
 
 
 class MemoryFilter(Filter):
-    fingerprints = set()
+
+    def __init__(self):
+        self.fingerprints = set()  # Instance variable to avoid state sharing
 
     def request_seen(self, request: Request) -> bool:
         fp = fingerprint(request).hex()

@@ -1,29 +1,11 @@
 import codecs
-import inspect
 import time
 import functools
-import six
-
-
-def singleton(cls):
-    """
-    单例模式的装饰器
-    :param cls:
-    :return:
-    """
-    instances = {}
-
-    def get_instance(*args, **kwargs):
-        if cls not in instances:
-            instances[cls] = cls(*args, **kwargs)
-        return instances[cls]
-
-    return get_instance
 
 
 def bytes_to_str(s, encoding='utf-8'):
     """Returns a str if a bytes object is given."""
-    if six.PY3 and isinstance(s, bytes):
+    if isinstance(s, bytes):
         return s.decode(encoding)
     return s
 

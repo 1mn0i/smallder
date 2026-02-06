@@ -70,18 +70,18 @@ class Response:
                 "is not tied to any request"
             )
 
-    @property
-    def text(self, encoding="utf-8"):
+    def text(self, encoding=None):
+        """Decode content to text with specified or auto-detected encoding."""
+        if encoding is None:
+            encoding = self.encoding or "utf-8"
         try:
             return self.content.decode(encoding)
         except UnicodeDecodeError:
             try:
-                encoding = self._auto_char_code() or "utf-8"
-                return self.content.decode(encoding, errors="ignore")
-            except UnicodeDecodeError:
-                raise UnicodeDecodeError(f"{encoding} codec can't decode")
-            except TypeError:
-                raise UnicodeDecodeError("codec can't decode")
+                detected_encoding = self._auto_char_code() or "utf-8"
+                return self.content.decode(detected_encoding, errors="ignore")
+            except (UnicodeDecodeError, TypeError):
+                raise UnicodeDecodeError("codec", b"", 0, 1, "can't decode content")
 
     @property
     def ok(self):
@@ -120,7 +120,7 @@ class Response:
                     raise JSONDecodeError(e.msg, e.doc, e.pos)
 
         try:
-            return json.loads(self.text, **kwargs)
+            return json.loads(self.text(), **kwargs)
         except JSONDecodeError as e:
             raise JSONDecodeError(e.msg, e.doc, e.pos)
 
@@ -133,4 +133,4 @@ class Response:
 
     @property
     def root(self):
-        return etree.HTML(self.text)
+        return etree.HTML(self.text())

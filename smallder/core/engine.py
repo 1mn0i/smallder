@@ -4,6 +4,9 @@ import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor, Future
 from requests import RequestException
+from smallder.core.response import Response
+from smallder.core.request import Request
+from smallder.core.item import Item
 from smallder.core.error import RetryException, DiscardException
 from smallder.api.app import FastAPIWrapper
 from smallder.core.downloader import Downloader
@@ -14,9 +17,9 @@ from smallder.core.statscollectors import MemoryStatsCollector
 
 
 class Engine:
-    item_que = queue.Queue()
 
     def __init__(self, spider, **kwargs):
+        self.item_que = queue.Queue()  # Instance variable to avoid state sharing
         self.spider = spider(**kwargs)
         self.spider.setup_server()
         self.fastapi_manager = FastAPIWrapper(spider=self.spider)
@@ -164,8 +167,24 @@ class Engine:
                     if task is None:
                         time.sleep(0.01)
                         continue
-                    task_name = task.__class__.__name__
-                    process_func = self.process_func(task_name)
+
+                    # 直接使用 isinstance 检查任务类型
+                    from smallder import Request, Response, Item
+
+                    if isinstance(task, Request):
+                        process_func = self.process_request
+                        task_name = "Request"
+                    elif isinstance(task, Response):
+                        process_func = self.process_response
+                        task_name = "Response"
+                    elif isinstance(task, (dict, Item)):
+                        process_func = self.process_item
+                        task_name = "Item"
+                    else:
+                        # 如果无法直接匹配，使用类名进行匹配
+                        task_name = task.__class__.__name__
+                        process_func = self.process_func(task_name)
+
                     future = executor.submit(process_func, task)
                     future.name = task_name
                     self.spider.futures.append(future)
@@ -196,8 +215,21 @@ class Engine:
                 if task is None:
                     time.sleep(0.1)
                     continue
-                task_name = task.__class__.__name__
-                process_func = self.process_func(task_name)
+
+                # 直接使用 isinstance 检查任务类型
+                from smallder import Request, Response, Item
+
+                if isinstance(task, Request):
+                    process_func = self.process_request
+                elif isinstance(task, Response):
+                    process_func = self.process_response
+                elif isinstance(task, (dict, Item)):
+                    process_func = self.process_item
+                else:
+                    # 如果无法直接匹配，使用类名进行匹配
+                    task_name = task.__class__.__name__
+                    process_func = self.process_func(task_name)
+
                 process_func(task)
                 rounds = 0
             except Exception as e:
@@ -205,16 +237,16 @@ class Engine:
         return self.spider
 
     def process_func(self, task_name):
-        func_dict = {
-            "Request": self.process_request,
-            "Response": self.process_response,
-            "dict": self.process_item,
-            "Item": self.process_item,
-        }
-        func = func_dict.get(task_name)
-        if func is None:
-            raise ValueError(f"{task_name} does not exist")
-        return func
+        """Get process function by task type name (string)"""
+        if task_name == "Request":
+            return self.process_request
+        elif task_name == "Response":
+            return self.process_response
+        elif task_name in ("Item", "dict"):
+            return self.process_item
+        else:
+            raise ValueError(f"Unknown task type: {task_name}")
+
 
     def process_callback_error(self, e, request, response=None):
         request_err_back = request.errback or getattr(self.spider, "error_callback", None)

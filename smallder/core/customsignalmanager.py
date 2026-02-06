@@ -1,9 +1,6 @@
 from pydispatch import dispatcher
 
-from smallder.utils.utils import singleton
 
-
-@singleton
 class CustomSignalManager:
     def __init__(self):
         self.custom_signals = {

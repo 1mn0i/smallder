@@ -1,8 +1,6 @@
 import time
 from typing import Any, Dict
 
-from smallder.utils.utils import singleton
-
 StatsT = Dict[str, Any]
 
 
@@ -68,12 +66,11 @@ class StatsCollector:
         self.set_value("time", time.time() - self._start_time)
 
 
-@singleton
 class MemoryStatsCollector(StatsCollector):
-    spider_stats = {}
 
     def __init__(self, spider):
         super().__init__(spider)
+        self.spider_stats = {}  # Instance variable to avoid state sharing
 
     def _persist_stats(self, stats: StatsT, spider) -> None:
         self.spider_stats[spider.name] = stats

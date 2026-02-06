@@ -1,5 +1,3 @@
-from requests.adapters import HTTPAdapter
-from urllib3 import Retry
 from smallder import Request, Response
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 import requests

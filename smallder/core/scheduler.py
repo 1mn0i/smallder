@@ -10,9 +10,9 @@ from smallder.utils.request import request_from_dict
 
 
 class Scheduler:
-    queue = queue.Queue()
 
     def __init__(self, spider, dup_filter: Filter):
+        self.queue = queue.Queue()  # Instance variable to avoid state sharing
         self.spider = spider
         self.batch_size = self.spider.batch_size or self.spider.thread_count * 10
         self.dup_filter = dup_filter
@@ -178,10 +178,7 @@ class RedisStartScheduler(RedisScheduler):
     def empty(self):
         if self.queue.empty():
             return not self.server.exists(self.request_key) and not self.server.exists(self.spider.redis_task_key)
-
-        else:
-            size = self.queue.qsize()
-        return not size
+        return False  # Queue is not empty
 
 
 class SchedulerFactory:

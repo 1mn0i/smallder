@@ -9,8 +9,6 @@ from smallder.core.engine import Engine
 
 
 class Spider:
-    __futures = deque()
-    signal_manager = CustomSignalManager()  # 爬虫信号 可自定义
     name = "base"
     fastapi = True  # 控制内部统计api的数据
     server = None  # redis连接server
@@ -34,9 +32,18 @@ class Spider:
         # "redis": ""
     }  # 定制配置
 
+    def __init__(self):
+        # Instance variables to avoid state sharing between spider instances
+        self._futures = deque()
+        self._signal_manager = CustomSignalManager()
+
     @property
     def futures(self):
-        return self.__futures
+        return self._futures
+
+    @property
+    def signal_manager(self):
+        return self._signal_manager
 
     def connect_start_signal(self, func):
         self.signal_manager.connect("SPIDER_STARTED", func)
