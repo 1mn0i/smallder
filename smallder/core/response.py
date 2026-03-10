@@ -1,10 +1,10 @@
-import copy
 import json
 from json import JSONDecodeError
-from urllib.parse import urljoin, parse_qsl, urlparse
-from lxml import etree
+from urllib.parse import parse_qsl, urljoin, urlparse
 
 import chardet
+from lxml import etree
+
 from smallder.utils.utils import guess_json_utf
 
 
@@ -34,6 +34,9 @@ class Response:
         self.encoding = encoding
         self.cookies = cookies or {}
         self.elapsed = elapsed
+        self._text_cache = {}
+        self._root = None
+        self._detected_encoding = None
 
     def __repr__(self):
         parts = ["<Response"]
@@ -72,25 +75,30 @@ class Response:
 
     def text(self, encoding=None):
         """Decode content to text with specified or auto-detected encoding."""
-        if encoding is None:
-            encoding = self.encoding or "utf-8"
+        resolved_encoding = encoding or self.encoding or "utf-8"
+        cached_text = self._text_cache.get(resolved_encoding)
+        if cached_text is not None:
+            return cached_text
         try:
-            return self.content.decode(encoding)
+            text = self.content.decode(resolved_encoding)
         except UnicodeDecodeError:
             try:
                 detected_encoding = self._auto_char_code() or "utf-8"
-                return self.content.decode(detected_encoding, errors="ignore")
+                text = self.content.decode(detected_encoding, errors="ignore")
             except (UnicodeDecodeError, TypeError):
                 raise UnicodeDecodeError("codec", b"", 0, 1, "can't decode content")
+        self._text_cache[resolved_encoding] = text
+        return text
 
     @property
     def ok(self):
         return self.status_code == 200
 
     def _auto_char_code(self):
-        char_code = chardet.detect(self.content)
-        encoding = char_code.get('encoding', 'utf-8')
-        return encoding
+        if self._detected_encoding is None:
+            char_code = chardet.detect(self.content)
+            self._detected_encoding = char_code.get("encoding", "utf-8")
+        return self._detected_encoding
 
     def params(self):
 
@@ -133,4 +141,6 @@ class Response:
 
     @property
     def root(self):
-        return etree.HTML(self.text())
+        if self._root is None:
+            self._root = etree.HTML(self.text())
+        return self._root

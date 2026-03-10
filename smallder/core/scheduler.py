@@ -32,6 +32,12 @@ class Scheduler:
     def add_failed_job(self, job, block=False):
         pass
 
+    def enqueue_job(self, job, block=False):
+        if self.filter_request(job):
+            self.queue.put(job, block=block)
+            return True
+        return False
+
     def filter_request(self, job):
         """
         过滤任务，如果是request并且需要去重就进行过滤
@@ -50,16 +56,14 @@ class MemoryScheduler(Scheduler):
 
     def next_job(self, block=False):
         try:
-            job = self.queue.get(block=block)
-            if self.filter_request(job):
-                return job
+            return self.queue.get(block=block)
         except _queue.Empty:
             pass
         except Exception:
             traceback.print_exc()
 
     def add_job(self, job, block=False):
-        self.queue.put(job, block=block)
+        self.enqueue_job(job, block=block)
 
     def size(self):
         return self.queue.qsize()
@@ -85,15 +89,13 @@ class RedisScheduler(Scheduler):
         datas = self.pop_list_queue(redis_key, self.batch_size)
         for byte_data in datas:
             data = self._request_from_dict(json.loads(byte_data.decode()))
-            self.queue.put(data)
+            self.enqueue_job(data)
 
     def next_job(self, block=False):
         try:
             if self.queue.empty():
                 self.pop_redis_to_queue(self.request_key)
-            job = self.queue.get(block=block)
-            if self.filter_request(job):
-                return job
+            return self.queue.get(block=block)
         except _queue.Empty:
             pass
         except Exception as e:
@@ -102,6 +104,8 @@ class RedisScheduler(Scheduler):
     def add_job(self, job, block=False):
         if isinstance(job, Request):
             try:
+                if not self.filter_request(job):
+                    return
                 _str = json.dumps(job.to_dict(self.spider))
                 self.server.rpush(self.request_key, _str.encode())
             except Exception as e:
@@ -148,10 +152,9 @@ class RedisStartScheduler(RedisScheduler):
                         reqs = self.spider.make_request_for_redis(data)
                         if isinstance(reqs, Iterable):
                             for req in reqs:
-                                self.queue.put(req, block=block)
-                                found += 1
-                        elif reqs:
-                            self.queue.put(reqs, block=block)
+                                if self.enqueue_job(req, block=block):
+                                    found += 1
+                        elif reqs and self.enqueue_job(reqs, block=block):
                             found += 1
                         else:
                             print(f"Request not made from data: {data}")
@@ -159,9 +162,7 @@ class RedisStartScheduler(RedisScheduler):
                     self.pop_redis_to_queue(self.request_key)
             if found:
                 self.spider.log.info(f"Read {found} requests from '{self.spider.redis_task_key}'")
-            job = self.queue.get_nowait()
-            if self.filter_request(job):
-                return job
+            return self.queue.get_nowait()
         except _queue.Empty:
             pass
         except Exception as e:

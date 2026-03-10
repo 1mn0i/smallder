@@ -1,6 +1,7 @@
 import pytest
 from urllib.parse import urlencode
-from smallder import Request  # 请替换为实际的模块名
+
+from smallder import Request
 
 def test_initialization():
     """测试 Request 类的基本初始化"""
@@ -29,6 +30,11 @@ def test_headers_setter():
     req = Request(method="get", url="http://example.com", headers={"User-Agent": "test-agent"})
     assert req.headers["Connection"] == "close"  # 确保 Connection 被添加
     assert req.headers["User-Agent"] == "test-agent"
+
+def test_headers_setter_does_not_mutate_input():
+    headers = {"User-Agent": "test-agent"}
+    Request(method="get", url="http://example.com", headers=headers)
+    assert "Connection" not in headers
 
 def test_headers_invalid():
     """测试 headers 设置非法值时是否抛出错误"""
@@ -66,9 +72,16 @@ def test_to_dict():
     assert req_dict["url"] == "http://example.com"
     assert req_dict["callback"] == "callback_method"
 
+def test_method_uses_post_for_json_payload():
+    req = Request(url="http://example.com", json={"key": "value"})
+    assert req.method == "POST"
+
+def test_method_preserves_explicit_non_get_method():
+    req = Request(method="patch", url="http://example.com", data={"key": "value"})
+    assert req.method == "PATCH"
+
 def test_referer_property():
     """测试 referer 属性是否能正常存取"""
     req = Request(method="get", url="http://example.com", referer="http://referer.com")
     assert req.referer == "http://referer.com"
-
 

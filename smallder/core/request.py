@@ -53,7 +53,7 @@ class Request:
             fetch=None,
             retry: int = 0  # 控制单个请求的重试次数
     ):
-        self.method = "POST" if method.upper() == "POST" or data and data != "{}" else "GET"
+        self.method = self._resolve_method(method=method, data=data, json=json)
         self.url = url
         self.params = params
         self.headers = headers
@@ -72,6 +72,22 @@ class Request:
         self.fetch = fetch
         self._meta = dict(meta) if meta else None
         self._referer = referer if referer else None
+
+    @staticmethod
+    def _resolve_method(method="get", data=None, json=None):
+        normalized_method = (method or "GET").upper()
+        has_body = Request._has_body(data) or json is not None
+        if normalized_method == "GET" and has_body:
+            return "POST"
+        return normalized_method
+
+    @staticmethod
+    def _has_body(data):
+        if data is None:
+            return False
+        if isinstance(data, str):
+            return data.strip() not in ("", "{}")
+        return bool(data)
 
     @property
     def meta(self) -> dict:
@@ -96,8 +112,9 @@ class Request:
             self._headers = None
         elif isinstance(value, dict):
             # 如果value是字典，则添加"Connection": "close"
-            value["Connection"] = "close"
-            self._headers = value
+            headers = dict(value)
+            headers["Connection"] = "close"
+            self._headers = headers
         else:
             # 如果value既不是None也不是dict，抛出错误或采取其他处理
             raise ValueError("headers must be a dictionary or None")

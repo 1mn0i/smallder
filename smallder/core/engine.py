@@ -2,16 +2,17 @@ import json
 import queue
 import time
 import traceback
-from concurrent.futures import ThreadPoolExecutor, Future
+from concurrent.futures import ThreadPoolExecutor
 from requests import RequestException
-from smallder.core.response import Response
-from smallder.core.request import Request
-from smallder.core.item import Item
-from smallder.core.error import RetryException, DiscardException
+
 from smallder.api.app import FastAPIWrapper
 from smallder.core.downloader import Downloader
+from smallder.core.error import RetryException, DiscardException
 from smallder.core.failure import Failure
+from smallder.core.item import Item
 from smallder.core.middleware import MiddlewareManager
+from smallder.core.request import Request
+from smallder.core.response import Response
 from smallder.core.scheduler import SchedulerFactory
 from smallder.core.statscollectors import MemoryStatsCollector
 
@@ -147,8 +148,10 @@ class Engine:
             end = 60 if self.spider.server else 10
             while rounds < end:
                 try:
-                    if time.time() - _time > 30:
+                    now = time.time()
+                    if now - _time > 30:
                         self.spider.signal_manager.send(signal_name="SPIDER_STATS")
+                        _time = now
                     if len(self.spider.futures) > self.spider.thread_count * 10:
                         time.sleep(0.1)
                         continue
@@ -167,23 +170,7 @@ class Engine:
                     if task is None:
                         time.sleep(0.01)
                         continue
-
-                    # 直接使用 isinstance 检查任务类型
-                    from smallder import Request, Response, Item
-
-                    if isinstance(task, Request):
-                        process_func = self.process_request
-                        task_name = "Request"
-                    elif isinstance(task, Response):
-                        process_func = self.process_response
-                        task_name = "Response"
-                    elif isinstance(task, (dict, Item)):
-                        process_func = self.process_item
-                        task_name = "Item"
-                    else:
-                        # 如果无法直接匹配，使用类名进行匹配
-                        task_name = task.__class__.__name__
-                        process_func = self.process_func(task_name)
+                    task_name, process_func = self.resolve_task(task)
 
                     future = executor.submit(process_func, task)
                     future.name = task_name
@@ -215,20 +202,7 @@ class Engine:
                 if task is None:
                     time.sleep(0.1)
                     continue
-
-                # 直接使用 isinstance 检查任务类型
-                from smallder import Request, Response, Item
-
-                if isinstance(task, Request):
-                    process_func = self.process_request
-                elif isinstance(task, Response):
-                    process_func = self.process_response
-                elif isinstance(task, (dict, Item)):
-                    process_func = self.process_item
-                else:
-                    # 如果无法直接匹配，使用类名进行匹配
-                    task_name = task.__class__.__name__
-                    process_func = self.process_func(task_name)
+                _, process_func = self.resolve_task(task)
 
                 process_func(task)
                 rounds = 0
@@ -247,6 +221,15 @@ class Engine:
         else:
             raise ValueError(f"Unknown task type: {task_name}")
 
+    def resolve_task(self, task):
+        if isinstance(task, Request):
+            return "Request", self.process_request
+        if isinstance(task, Response):
+            return "Response", self.process_response
+        if isinstance(task, (dict, Item)):
+            return "Item", self.process_item
+        task_name = task.__class__.__name__
+        return task_name, self.process_func(task_name)
 
     def process_callback_error(self, e, request, response=None):
         request_err_back = request.errback or getattr(self.spider, "error_callback", None)
@@ -262,6 +245,7 @@ class Engine:
             f"exc_type :{exc_type} exc_val :{exc_val} 任务池数量:{len(self.spider.futures)},调度器队列是否为空:{self.scheduler.empty()} ")
         if exc_tb:
             self.spider.log.warning(traceback.format_exc(exc_tb))
+        self.download.close()
         self.spider.signal_manager.send("SPIDER_STOPPED")
         self.spider.log.success(
             f"Spider Close : {json.dumps(self.stats_collector.get_stats(), ensure_ascii=False, indent=4)}")
